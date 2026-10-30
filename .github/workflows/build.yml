@@ -1,31 +1,52 @@
 name: Build InjectFix Patch
+
 on:
-  workflow_dispatch: # Cho phép kích hoạt thủ công
+  workflow_dispatch: # Cho phép kích hoạt thủ công từ tab Actions
+  push:
+    branches:
+      - main # Tự động chạy khi push lên nhánh main (có thể đổi thành master hoặc nhánh khác)
 
 jobs:
   build-patch:
+    name: Generate IFix Patch
     runs-on: ubuntu-latest
+
     steps:
+      # 1. Lấy mã nguồn
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          lfs: true # Nếu dự án dùng Git LFS
+          lfs: true # Bỏ qua nếu bạn không dùng Git LFS cho các file Unity
 
+      # 2. Cache thư mục Library để tăng tốc độ build (tùy chọn nhưng rất khuyến khích)
       - name: Cache Unity Library
         uses: actions/cache@v4
         with:
           path: Library
           key: Library-${{ hashFiles('Assets/**', 'Packages/**', 'ProjectSettings/**') }}
+          restore-keys: |
+            Library-
 
+      # 3. Build (Generate) Patch bằng GameCI
       - name: Run InjectFix Patch Generation
-        uses: game-ci/unity-builder@v4 # Hoặc dùng image unity trực tiếp
+        uses: game-ci/unity-builder@v4
         env:
           UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
           UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
           UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
         with:
-          targetPlatform: Android # Hoặc iOS, tùy platform bạn muốn tạo patch
-          # Quan trọng: Gọi hàm Editor của bạn thay vì build game
+          targetPlatform: Android # Có thể đổi thành iOS hoặc WebGL tùy nền tảng bạn muốn patch
+          projectPath: .          # SỬA LỖI TẠI ĐÂY: "." nếu file ProjectSettings nằm ở gốc repo. Đổi thành "TênThưMục" nếu nằm trong thư mục con.
+          
+          # QUAN TRỌNG: Phải trỏ đến hàm static bạn đã viết trong code Editor
           buildMethod: YourNamespace.PatchBuilder.GeneratePatch 
-          # Nếu dùng custom method, có thể cần tắt tính năng build mặc định
-          # customParameters: -executeMethod YourNamespace.PatchBuilder.GeneratePatch
+
+      # 4. Tải file patch lên Artifacts
+      - name: Upload Patch Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Assembly-CSharp-patch
+          # Đường dẫn đến file patch được sinh ra (thường nằm ở gốc dự án Unity)
+          # Nếu hàm GeneratePatch của bạn lưu ở chỗ khác, hãy sửa lại đường dẫn này
+          path: Assembly-CSharp.patch.bytes
+          if-no-files-found: error # Báo lỗi nếu không tìm thấy file thay vì im lặng bỏ qua
